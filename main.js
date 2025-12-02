@@ -44,12 +44,17 @@
   let particles = [];
 
   let lastTime = performance.now();
-  let keys = {};
+  const input = { left: false, right: false, up: false, down: false, last: null };
   let gameState = "playing"; // playing | paused | gameover | win
 
   const player = {
     x: 0,
     y: 0,
+    tx: 0,
+    ty: 0,
+    moving: false,
+    target: null,
+    dir: { x: 0, y: 0 },
     speed: config.baseSpeed,
     bombCapacity: 1,
     bombStock: 1,
@@ -105,6 +110,9 @@
     player.lives = config.startingLives;
     player.invuln = 0;
     player.score = 0;
+    player.moving = false;
+    player.target = null;
+    player.dir = { x: 0, y: 0 };
 
     const spawn = { x: 1, y: 1 };
     for (let y = 0; y < config.rows; y++) {
@@ -126,6 +134,8 @@
       grid.push(row);
     }
 
+    player.tx = spawn.x;
+    player.ty = spawn.y;
     player.x = (spawn.x + 0.5) * tileSize;
     player.y = (spawn.y + 0.5) * tileSize;
 
@@ -162,17 +172,19 @@
   }
 
   function resize() {
-    const prevTile = tileSize || 1;
+    const prevTile = tileSize || config.baseTile;
     const usableW = Math.min(window.innerWidth - 24, 1180);
     const usableH = Math.min(window.innerHeight - 260, 920);
     const candidate = Math.min(usableW / config.cols, usableH / config.rows);
     tileSize = Math.max(28, Math.floor(candidate));
     const scale = tileSize / prevTile;
-    player.x *= scale;
-    player.y *= scale;
+    player.x = (player.tx + 0.5) * tileSize;
+    player.y = (player.ty + 0.5) * tileSize;
     enemies.forEach((e) => {
-      e.x *= scale;
-      e.y *= scale;
+      const tx = Math.floor(e.x / prevTile);
+      const ty = Math.floor(e.y / prevTile);
+      e.x = (tx + 0.5) * tileSize;
+      e.y = (ty + 0.5) * tileSize;
     });
     particles.forEach((p) => {
       p.x *= scale;
@@ -240,31 +252,93 @@
     return false;
   }
 
-  function handleInput(dt) {
-    let dx = 0;
-    let dy = 0;
-    if (keys["ArrowLeft"] || keys["a"]) dx -= 1;
-    if (keys["ArrowRight"] || keys["d"]) dx += 1;
-    if (keys["ArrowUp"] || keys["w"]) dy -= 1;
-    if (keys["ArrowDown"] || keys["s"]) dy += 1;
-    if (dx !== 0 || dy !== 0) {
-      const mag = Math.hypot(dx, dy) || 1;
-      dx /= mag;
-      dy /= mag;
-      const nextX = player.x + dx * player.speed * tileSize * dt;
-      const nextY = player.y + dy * player.speed * tileSize * dt;
-      if (!collides(nextX, player.y, player)) {
-        player.x = nextX;
+  function keyToDir(key) {
+    const k = key.toLowerCase();
+    if (k === "arrowleft" || k === "a") return "left";
+    if (k === "arrowright" || k === "d") return "right";
+    if (k === "arrowup" || k === "w") return "up";
+    if (k === "arrowdown" || k === "s") return "down";
+    return null;
+  }
+
+  function dirVector(name) {
+    switch (name) {
+      case "left":
+        return { x: -1, y: 0 };
+      case "right":
+        return { x: 1, y: 0 };
+      case "up":
+        return { x: 0, y: -1 };
+      case "down":
+        return { x: 0, y: 1 };
+      default:
+        return { x: 0, y: 0 };
+    }
+  }
+
+  function desiredDirs() {
+    const base = ["left", "right", "up", "down"];
+    if (input.last && base.includes(input.last)) {
+      return [input.last, ...base.filter((d) => d !== input.last)];
+    }
+    return base;
+  }
+
+  function canEnter(tx, ty) {
+    if (isBlocked(tx, ty)) return false;
+    const bomb = bombs.find((b) => b.tx === tx && b.ty === ty);
+    if (!bomb) return true;
+    if (bomb.owner === player.id) {
+      const onBombTile = player.tx === tx && player.ty === ty;
+      if (onBombTile) return true;
+      if (bomb.grace > 0.05) return true;
+    }
+    return false;
+  }
+
+  function movePlayer(dt) {
+    if (!player.moving) {
+      for (const dirName of desiredDirs()) {
+        if (!input[dirName]) continue;
+        const dir = dirVector(dirName);
+        const targetX = player.tx + dir.x;
+        const targetY = player.ty + dir.y;
+        if (canEnter(targetX, targetY)) {
+          player.dir = dir;
+          player.moving = true;
+          player.target = { x: targetX, y: targetY };
+          break;
+        }
       }
-      if (!collides(player.x, nextY, player)) {
-        player.y = nextY;
+    }
+
+    if (player.moving && player.target) {
+      const targetPos = posFromTile(player.target.x, player.target.y);
+      const dx = targetPos.x - player.x;
+      const dy = targetPos.y - player.y;
+      const dist = Math.hypot(dx, dy);
+      const speed = player.speed * tileSize;
+      const step = speed * dt;
+      if (step >= dist || dist === 0) {
+        player.x = targetPos.x;
+        player.y = targetPos.y;
+        player.tx = player.target.x;
+        player.ty = player.target.y;
+        player.moving = false;
+        player.target = null;
+        movePlayer(0); // allow instant chaining when holding a key
+      } else {
+        player.x += (dx / dist) * step;
+        player.y += (dy / dist) * step;
       }
     }
   }
 
   function placeBomb() {
+    if (gameState !== "playing") return;
     if (player.bombStock <= 0) return;
-    const { x: tx, y: ty } = tileFromPos(player.x, player.y);
+    const tx = player.tx;
+    const ty = player.ty;
     const existing = bombs.some((b) => b.tx === tx && b.ty === ty);
     if (existing) return;
     player.bombStock -= 1;
@@ -387,8 +461,7 @@
   function updatePowerups() {
     for (let i = powerups.length - 1; i >= 0; i--) {
       const pu = powerups[i];
-      const tile = tileFromPos(player.x, player.y);
-      if (tile.x === pu.tx && tile.y === pu.ty) {
+      if (player.tx === pu.tx && player.ty === pu.ty) {
         applyPowerup(pu.type);
         powerups.splice(i, 1);
         continue;
@@ -473,6 +546,13 @@
     if (player.invuln > 0 || gameState !== "playing") return;
     player.lives -= 1;
     player.invuln = 1.6;
+    const spawn = posFromTile(1, 1);
+    player.tx = 1;
+    player.ty = 1;
+    player.x = spawn.x;
+    player.y = spawn.y;
+    player.moving = false;
+    player.target = null;
     player.score = Math.max(0, player.score - 150);
     updateUI();
     if (player.lives <= 0) {
@@ -490,6 +570,7 @@
   }
 
   function updatePlayer(dt) {
+    movePlayer(dt);
     if (player.invuln > 0) {
       player.invuln -= dt;
     }
@@ -499,7 +580,6 @@
   }
 
   function update(dt) {
-    handleInput(dt);
     updatePlayer(dt);
     updatePowerups();
     updateBombs(dt);
@@ -763,21 +843,34 @@
   }
 
   document.addEventListener("keydown", (e) => {
-    if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
+    if ([" ", "Spacebar", "Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) || e.code === "Space") {
       e.preventDefault();
     }
-    if (e.code === "Space") {
+    const dir = keyToDir(e.key) || keyToDir(e.code);
+    if (dir) {
+      input[dir] = true;
+      input.last = dir;
+    }
+    if (e.code === "Space" || e.key === " ") {
       placeBomb();
     } else if (e.key === "r" || e.key === "R") {
       startRun();
     } else if (e.key === "Escape") {
       togglePause();
     }
-    keys[e.key] = true;
   });
 
   document.addEventListener("keyup", (e) => {
-    keys[e.key] = false;
+    const dir = keyToDir(e.key) || keyToDir(e.code);
+    if (dir) {
+      input[dir] = false;
+    }
+  });
+
+  window.addEventListener("blur", () => {
+    input.left = input.right = input.up = input.down = false;
+    player.moving = false;
+    player.target = null;
   });
 
   playAgain.addEventListener("click", () => primaryAction());
