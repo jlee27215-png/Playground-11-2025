@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Neon Bomber</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="bg">
+    <div class="orb orb-a"></div>
+    <div class="orb orb-b"></div>
+    <div class="grid-lines"></div>
+  </div>
+
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">
+          <span class="spark"></span>
+          <span class="spark"></span>
+          <span class="spark"></span>
+        </div>
+        <div>
+          <p class="eyebrow">Arcade Revival</p>
+          <h1>Neon Bomber</h1>
+        </div>
+      </div>
+      <div class="pill instructions">Move with WASD / Arrows · Drop bomb with Space · R to restart</div>
+    </header>
+
+    <section class="hud">
+      <div class="stat">
+        <span class="label">Lives</span>
+        <span class="value" id="ui-lives">3</span>
+      </div>
+      <div class="stat">
+        <span class="label">Score</span>
+        <span class="value" id="ui-score">0000</span>
+      </div>
+      <div class="stat">
+        <span class="label">Bombs</span>
+        <span class="value" id="ui-bombs">1</span>
+      </div>
+      <div class="stat">
+        <span class="label">Range</span>
+        <span class="value" id="ui-range">2</span>
+      </div>
+      <div class="stat">
+        <span class="label">Speed</span>
+        <span class="value" id="ui-speed">1.0x</span>
+      </div>
+    </section>
+
+    <section class="board">
+      <canvas id="game" aria-label="Neon Bomber playfield" role="img"></canvas>
+      <div class="state-card hidden" id="state-card">
+        <p class="eyebrow" id="state-subtitle">Status</p>
+        <h2 id="state-title">Game Over</h2>
+        <p id="state-detail">Press restart to try again.</p>
+        <div class="actions">
+          <button id="play-again" class="primary">Play again</button>
+          <button id="share" class="ghost">Share seed</button>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div class="tip">
+        <span class="dot"></span>
+        Bomb chains stack — slide a bomb next to another and watch the cascade.
+      </div>
+      <div class="controls">
+        <button id="toggle-help" class="ghost">Help</button>
+        <button id="reset" class="primary">New Run</button>
+      </div>
+    </footer>
+  </main>
+
+  <script src="main.js"></script>
+</body>
+</html>
